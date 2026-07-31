@@ -3,6 +3,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+print(f"[DEBUG] DISCORD_TOKEN in os.environ: {'DISCORD_TOKEN' in os.environ}")
+print(f"[DEBUG] DISCORD_TOKEN length: {len(os.environ.get('DISCORD_TOKEN', ''))}")
+
 DISCORD_TOKEN: str = os.getenv("DISCORD_TOKEN", "")
 CONTACT_EMAIL: str = os.getenv("CONTACT_EMAIL", "your@email.com")
 OPERATOR_ROLE: str = os.getenv("OPERATOR_ROLE", "researcher")
