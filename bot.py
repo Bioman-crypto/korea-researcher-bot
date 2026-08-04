@@ -1,18 +1,33 @@
+import asyncio
 import logging
-import os
 from typing import Optional
 
 import discord
 from discord import app_commands
 
 import config
-from skills import cache_manager, openalex_fetcher, query_parser, result_formatter
+from skills import cache_manager, openalex_fetcher, query_parser, result_formatter, sheets_logger
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+
+def _log_search(interaction: discord.Interaction, keyword: str, univ: Optional[str], since: Optional[int]) -> None:
+    asyncio.create_task(
+        asyncio.to_thread(
+            sheets_logger.log_search_sync,
+            interaction.user.id,
+            str(interaction.user),
+            interaction.guild.id if interaction.guild else None,
+            interaction.guild.name if interaction.guild else None,
+            keyword,
+            univ,
+            since,
+        )
+    )
 
 
 class Bot(discord.Client):
@@ -67,6 +82,8 @@ async def search(
         await interaction.response.send_message(parsed["error"], ephemeral=True)
         return
 
+    _log_search(interaction, keyword, univ, since)
+
     query = parsed["query"]
     cache_key = cache_manager.make_key(query, univ, since)
     cached = cache_manager.get(cache_key)
@@ -108,6 +125,7 @@ async def search(
 
 
 @bot.tree.command(name="listusers", description="List all members with the researcher role")
+@app_commands.default_permissions(manage_guild=True)
 async def listusers(interaction: discord.Interaction):
     if not isinstance(interaction.user, discord.Member) or not _has_role(
         interaction.user, config.ADMIN_ROLE
