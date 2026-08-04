@@ -15,6 +15,11 @@ GOOGLE_SERVICE_ACCOUNT_JSON: str = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "")
 GOOGLE_SHEETS_ID: str = os.getenv("GOOGLE_SHEETS_ID", "")
 GOOGLE_SHEETS_WORKSHEET: str = os.getenv("GOOGLE_SHEETS_WORKSHEET", "search_log")
 
+# 대프컨 students_master 시트 (읽기 전용) — 검색 로그에 student_id/industry_field를 덧붙이기 위함
+STUDENTS_MASTER_SHEET_ID: str = os.getenv("STUDENTS_MASTER_SHEET_ID", "")
+STUDENTS_MASTER_WORKSHEET: str = os.getenv("STUDENTS_MASTER_WORKSHEET", "students_master")
+STUDENTS_MASTER_CACHE_TTL_SECONDS: int = 600
+
 RESULTS_YEAR_RANGE: int = 3
 INLINE_LIMIT: int = 200
 EMBED_PAGE_SIZE: int = 40

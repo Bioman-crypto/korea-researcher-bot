@@ -48,7 +48,8 @@
 - 검색 결과(교신저자 목록)는 디스코드에만 표시. CSV 저장/전송 기능 없음 (개인정보 보호).
 - 캐시는 인메모리(24h TTL). 서버 재시작 시 초기화됨.
 - 슬래시 커맨드는 `setup_hook`에서 글로벌 sync. 처음 배포 후 반영까지 최대 1시간 소요.
-- **검색 로그(sheets_logger.py)**: `/search` 호출마다 user_id/username/keyword/univ/since를 Google Sheets에 append. Railway 파일시스템은 임시적이라 로컬 CSV 대신 사용. `GOOGLE_SERVICE_ACCOUNT_JSON`(서비스 계정 JSON 내용 전체), `GOOGLE_SHEETS_ID`가 비어있으면 조용히 스킵됨(봇 동작에는 영향 없음). 서비스 계정은 grad-crm과 동일한 것을 재사용하되(`grad-crm-agent@daepcon-498505.iam.gserviceaccount.com`), 대상 시트는 검색 로그 전용 별도 시트를 사용해 대프컨 데이터와 분리.
+- **검색 로그(sheets_logger.py)**: `/search` 호출마다 user_id/username/keyword/univ/since/student_id/industry_field를 Google Sheets에 append. Railway 파일시스템은 임시적이라 로컬 CSV 대신 사용. `GOOGLE_SERVICE_ACCOUNT_JSON`(서비스 계정 JSON 내용 전체), `GOOGLE_SHEETS_ID`가 비어있으면 조용히 스킵됨(봇 동작에는 영향 없음). 서비스 계정은 grad-crm과 동일한 것을 재사용하되(`grad-crm-agent@daepcon-498505.iam.gserviceaccount.com`), 대상 시트는 검색 로그 전용 별도 시트를 사용해 대프컨 데이터와 분리.
+- **student_id/industry_field 조회**: 대프컨 실제 운영 시트(`grad-program-agent`의 `students_master`, 한국어 시트)를 `STUDENTS_MASTER_SHEET_ID`로 읽기 전용 조회. `discord_user_id` 컬럼으로 검색자를 찾아 `student_id`, `industry_field`를 매핑. 10분 TTL 인메모리 캐시(`STUDENTS_MASTER_CACHE_TTL_SECONDS`). 이 시트는 대프컨이 소유하며 검색봇은 절대 쓰기(write)하지 않음 — 서비스 계정에 Viewer 권한만 부여.
 
 ## 파일 구조
 
