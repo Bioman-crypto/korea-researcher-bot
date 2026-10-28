@@ -38,6 +38,11 @@ class Bot(discord.Client):
         self.tree = app_commands.CommandTree(self)
 
     async def setup_hook(self):
+        if ladder is not None:
+            try:
+                await ladder.on_setup(self)
+            except Exception:
+                logger.exception("주제 찾기 사다리 상태를 불러오지 못했습니다. /search는 그대로 동작합니다.")
         await self.tree.sync()
         logger.info("Global slash commands synced.")
 
@@ -46,6 +51,15 @@ class Bot(discord.Client):
 
 
 bot = Bot()
+
+# 주제 찾기 사다리 (ladder/) — 무엇이 실패해도 /search는 그대로 동작하도록 감싼다
+ladder = None
+try:
+    import ladder as _ladder
+    _ladder.setup(bot)
+    ladder = _ladder
+except Exception:
+    logger.exception("주제 찾기 사다리를 불러오지 못했습니다. /search는 그대로 동작합니다.")
 
 
 
