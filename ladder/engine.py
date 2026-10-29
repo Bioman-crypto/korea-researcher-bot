@@ -17,7 +17,8 @@ BG_PROMPT = (PROMPTS / "bg_prompt.md").read_text(encoding="utf-8")
 
 # 검증 때 쓴 시스템 프롬프트 (run_consistency.py / persona_run.py)
 JUDGE_SYSTEM = "너는 지시에 따라 JSON만 출력하는 판정기다. 도구를 쓰지 않는다."
-DEEP_SYSTEM = "너는 지시에 따라 JSON만 출력한다. 도구를 쓰지 않는다."
+DEEP_SYSTEM = ("너는 지시에 따라 JSON만 출력한다. 도구를 쓰지 않는다. "
+               "문자열 값 안에서 무언가를 인용·강조할 때는 작은따옴표(')만 쓰고, 큰따옴표(\")는 JSON 문법에만 쓴다.")
 
 NAMES = texts.LEVELS
 HIST_KEEP = 30          # 웹 도구와 같이 최근 30개만 보관

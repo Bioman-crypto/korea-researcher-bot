@@ -80,9 +80,38 @@ def parse_json(text):
     try:
         return json.loads(t)
     except json.JSONDecodeError:
-        # 모델이 가끔 남기는 형식 실수: 목록·객체 끝의 쉼표, 둥근 따옴표
-        fixed = re.sub(r",\s*([}\]])", r"\1", t).replace("“", '"').replace("”", '"')
-        return json.loads(fixed)
+        pass
+    # 모델이 남기는 형식 실수: 문장 속 큰따옴표("기도"로 넘어감), 목록·객체 끝의 쉼표
+    fixed = re.sub(r",\s*([}\]])", r"\1", _escape_inner_quotes(t))
+    return json.loads(fixed)
+
+
+def _escape_inner_quotes(t):
+    """문자열 안에 그대로 들어간 큰따옴표를 \\" 로 바꾼다.
+    문자열 안에서 만난 " 뒤에 (공백 빼고) , : } ] 나 끝이 오면 문자열의 끝, 아니면 글 속 따옴표로 본다."""
+    out, in_str, i, n = [], False, 0, len(t)
+    while i < n:
+        c = t[i]
+        if in_str and c == "\\":
+            out.append(t[i:i + 2])
+            i += 2
+            continue
+        if c == '"':
+            if not in_str:
+                in_str = True
+            else:
+                j = i + 1
+                while j < n and t[j] in " \t\r\n":
+                    j += 1
+                if j >= n or t[j] in ",:}]":
+                    in_str = False
+                else:
+                    out.append('\\"')
+                    i += 1
+                    continue
+        out.append(c)
+        i += 1
+    return "".join(out)
 
 
 async def json_call(tier, prompt, system, check=None):
