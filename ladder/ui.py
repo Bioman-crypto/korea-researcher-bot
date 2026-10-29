@@ -253,6 +253,8 @@ def s2_panel(st, note=""):
         body.append("⚠️ " + T.S2_NEED_WORDS)
     if not ks:
         body.append("⚠️ " + T.S2_NEED_KWS)
+    n = len(engine.signal_hist(st))
+    body.append((T.S2_PROGRESS_OK if n >= 3 else T.S2_PROGRESS_LOW).format(n=n))
     e = discord.Embed(title=T.S2_TITLE, description="\n\n".join(body), color=COLOR)
     cur = st.get("cur") or {}
     items = []
@@ -263,15 +265,13 @@ def s2_panel(st, note=""):
     ok = bool(ws and ks)
     items += [Btn("write", T.BTN_WRITE, discord.ButtonStyle.primary, disabled=not ok, row=2),
               Btn("random", T.BTN_RANDOM, disabled=not ok, row=2), Btn("edit_keywords", T.BTN_EDIT_KEYWORDS, row=2)]
-    n = len(engine.signal_hist(st))
     items += [Btn("signal", T.BTN_SIGNAL, discord.ButtonStyle.success, row=3), Btn("record", T.BTN_RECORD, row=3),
               Btn("reset", T.BTN_RESET, discord.ButtonStyle.danger, row=3)]
-    if n < 3:
-        e.set_footer(text=T.SIGNAL_GATE.format(n=n))
     return {"embed": e, "view": layout(*items)}
 
 
-def feedback_panel(h):
+def feedback_panel(h, done=None):
+    """done = 지금까지 피드백 받은 질문 수 (관심 분야 찾기까지 얼마나 남았는지 아래에 적는다)."""
     lv = h["level"]
     n = lv if lv in T.LEVELS else 0
     bar = "🟩" * n + "⬜" * (6 - n)                              # 6칸 중 몇 칸인지 한눈에 (단계라는 게 보이게)
@@ -295,7 +295,8 @@ def feedback_panel(h):
     if not (h["uses_both"] and h["my_link"]):
         check.append(T.FB_CHECK_TAIL)
     e.add_field(name=T.FB_CHECK, value=_cut("\n".join(check), 1024), inline=False)
-    e.set_footer(text=_cut(f"{h['word']} × {h['kw']}", 2048))
+    progress = "" if done is None else "\n" + (T.FB_PROGRESS_OK if done >= 3 else T.FB_PROGRESS_LOW).format(n=done)
+    e.set_footer(text=_cut(f"{h['word']} × {h['kw']}{progress}", 2048))
     warn = T.FB_COPIED_HINT if h.get("copied", 0) >= 40 else T.FB_COPIED_BG if h.get("bgCopied", 0) >= 40 else None
     view = layout(Btn("rewrite", T.BTN_REWRITE, discord.ButtonStyle.primary), Btn("other_pair", T.BTN_OTHER_PAIR),
                   Btn("signal", T.BTN_SIGNAL, discord.ButtonStyle.success), Btn("record", T.BTN_RECORD))
@@ -680,7 +681,7 @@ async def on_question(interaction, word, kw, q):
             return
         (judged, jmeta), (bg, bmeta) = jr, (br if not isinstance(br, Exception) else (None, {}))
         h, same = engine.apply_coach(st, word, kw, q, judged, bg)
-        msg = await interaction.followup.send(**feedback_panel(h), wait=True)
+        msg = await interaction.followup.send(**feedback_panel(h, len(engine.signal_hist(st))), wait=True)
         engine.remember_feedback(st, msg.id, h)
         await store.save(uid, name, st)
         store.log(uid, name, "coach", word=word, kw=kw, q=q, h=h, same=same, judge=jmeta, deep=bmeta,
@@ -701,7 +702,7 @@ async def b_signal(interaction):
         return
     n = len(engine.signal_hist(st))
     if n < 3:
-        await ephemeral(interaction, T.SIGNAL_GATE.format(n=n))
+        await ephemeral(interaction, T.SIGNAL_GATE.format(n=n, left=3 - n))
         return
     uid, name = interaction.user.id, _name(interaction.user)
     lock = _lock(uid)
