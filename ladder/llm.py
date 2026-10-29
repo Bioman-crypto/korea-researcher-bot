@@ -76,14 +76,20 @@ def parse_json(text):
         raise ValueError("JSON 없음: " + t[:200])
     s = min(starts)
     e = t.rfind("}" if t[s] == "{" else "]")
-    return json.loads(t[s:e + 1])
+    t = t[s:e + 1]
+    try:
+        return json.loads(t)
+    except json.JSONDecodeError:
+        # 모델이 가끔 남기는 형식 실수: 목록·객체 끝의 쉼표, 둥근 따옴표
+        fixed = re.sub(r",\s*([}\]])", r"\1", t).replace("“", '"').replace("”", '"')
+        return json.loads(fixed)
 
 
 async def json_call(tier, prompt, system, check=None):
     """JSON을 돌려받는다. 형식이 깨지거나 check가 실패하면 한 번 더 부른다. → (obj, meta)"""
     t0 = time.monotonic()
     calls, last = [], None
-    for attempt in range(2):
+    for attempt in range(3):
         try:
             text, meta = await (_call_cli if BACKEND == "cli" else _call_api)(tier, prompt, system)
             calls.append(meta)

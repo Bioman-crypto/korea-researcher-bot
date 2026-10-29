@@ -122,6 +122,11 @@ async def _guard(handler, interaction, *args):
             pass
 
 
+def _error_keep(text):
+    """AI 호출 실패 안내. 학생이 쓴 글이 있으면 다시 붙여 넣을 수 있게 같이 보여 준다 (실패한 건 한도에서 빠짐)."""
+    return _cut(T.ERROR + (f"\n{T.ERROR_KEEP}\n{text}" if text else ""), 2000)
+
+
 def _options(values, selected=(), desc=None):
     """메뉴 선택지 (최대 25개, 글자 100자). 같은 값은 한 번만."""
     out, seen = [], set()
@@ -470,27 +475,29 @@ async def b_no_keywords(interaction):
         await run_extract(interaction, st)
 
 
-async def run_extract(interaction, st):
+async def run_extract(interaction, st, keep=""):
     uid, name = interaction.user.id, _name(interaction.user)
     lock = _lock(uid)
     if lock.locked():
         await ephemeral(interaction, T.BUSY)
-        return
+        return False
     async with lock:
         if not engine.bump_usage(st, "extract", LIMITS["extract"]):
             await ephemeral(interaction, T.DAILY_LIMIT)
-            return
+            return False
         await interaction.response.defer(thinking=True)
         try:
             r, meta = await llm.json_call("deep", engine.extract_prompt(st), engine.DEEP_SYSTEM, check=lambda o: engine.apply_extract(engine.new_state(), o))
         except llm.LLMError as exc:
+            st["usage"]["extract"] -= 1                         # 실패한 건 하루 한도에서 빼 준다
             store.log(uid, name, "extract", error=str(exc))
-            await interaction.followup.send(T.ERROR)
-            return
+            await interaction.followup.send(_error_keep(keep))
+            return False
         engine.apply_extract(st, r)
         await store.save(uid, name, st)
         store.log(uid, name, "extract", deep=meta, detail=r)
         await interaction.followup.send(**s1_panel(st))
+        return True
 
 
 async def s_words(interaction, values, kind="문제"):
@@ -536,8 +543,10 @@ async def on_follow_up(interaction, a):
         return
     q = st.get("follow_up") or ""
     i = engine.follow_target(st["answers"], q)                     # 추가 질문이 가리킨 답 칸 뒤에 덧붙인다
-    st["answers"][i] = "\n".join(x for x in ((st["answers"][i] or "").strip(), T.FOLLOW_TAG.format(q=q, a=a)) if x)
-    await run_extract(interaction, st)
+    before = st["answers"][i]
+    st["answers"][i] = "\n".join(x for x in ((before or "").strip(), T.FOLLOW_TAG.format(q=q, a=a)) if x)
+    if not await run_extract(interaction, st, keep=a):
+        st["answers"][i] = before                                  # 실패하면 되돌린다 (다시 눌러도 두 번 붙지 않게)
 
 
 async def b_edit_words(interaction):
@@ -641,8 +650,9 @@ async def on_question(interaction, word, kw, q):
             llm.json_call("judge", engine.judge_prompt(word, kw, q), engine.JUDGE_SYSTEM),
             llm.json_call("deep", engine.bg_prompt(word, kw, q), engine.DEEP_SYSTEM), return_exceptions=True)
         if isinstance(jr, Exception):
+            st["usage"]["coach"] -= 1
             store.log(uid, name, "coach", word=word, kw=kw, q=q, error=str(jr))
-            await interaction.followup.send(T.ERROR)
+            await interaction.followup.send(_error_keep(q))
             return
         (judged, jmeta), (bg, bmeta) = jr, (br if not isinstance(br, Exception) else (None, {}))
         h, same = engine.apply_coach(st, word, kw, q, judged, bg)
@@ -683,6 +693,7 @@ async def b_signal(interaction):
             r, meta = await llm.json_call("deep", engine.signal_prompt(st), engine.DEEP_SYSTEM,
                                           check=lambda o: engine.apply_signal(engine.new_state(), o))
         except llm.LLMError as exc:
+            st["usage"]["signal"] -= 1
             store.log(uid, name, "signal", error=str(exc))
             await interaction.followup.send(T.ERROR)
             return
