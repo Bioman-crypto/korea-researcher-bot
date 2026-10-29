@@ -150,22 +150,28 @@ def _offered(interaction, custom_id):
 
 
 # ---------- 화면 ----------
-def guide_embeds():
+def _guide_embed(title, body, color=COLOR):
     nums = {"extract": LIMITS["extract"], "coach": LIMITS["coach"], "signal": LIMITS["signal"]}
-    return [discord.Embed(title=title, description=_cut(body.format(**nums) if "{" in body else body, 4096), color=COLOR)
-            for title, body in T.GUIDE_PAGES]
+    return discord.Embed(title=title, description=_cut(body.format(**nums) if "{" in body else body, 4096), color=color)
+
+
+def guide_embeds():
+    """자세한 사용법 장들 + 맨 끝에 한 화면 요약."""
+    return [_guide_embed(t, b) for t, b in T.GUIDE_PAGES] + [_guide_embed(*T.GUIDE_START, color=discord.Color.green())]
 
 
 def guide_messages():
-    """설명서를 메시지 단위로 나눈다 (메시지 하나에 임베드 합계 6000자·10개까지)."""
+    """설명서를 메시지 단위로 나눈다. 요약 카드는 늘 따로 맨 마지막 메시지 — 채널을 열면 맨 아래가 먼저 보이고,
+    방 만들기 버튼도 거기에 붙는다. (메시지 하나에 임베드 합계 6000자·10개까지)"""
+    *pages, start = guide_embeds()
     out, cur, size = [], [], 0
-    for e in guide_embeds():
+    for e in pages:
         if cur and (size + len(e) > 5800 or len(cur) == 10):
             out.append(cur)
             cur, size = [], 0
         cur.append(e)
         size += len(e)
-    return out + [cur] if cur else out
+    return out + ([cur] if cur else []) + [[start]]
 
 
 def welcome_panel(name):
