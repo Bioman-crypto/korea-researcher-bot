@@ -22,7 +22,10 @@ def setup(bot):
 
     @bot.tree.command(name="사다리도움말", description="주제 찾기 사다리 사용 설명서")
     async def help_cmd(interaction: discord.Interaction):
-        await interaction.response.send_message(embed=ui.guide_embed(), ephemeral=True)
+        msgs = ui.guide_messages()
+        await interaction.response.send_message(embeds=msgs[0], ephemeral=True)
+        for embeds in msgs[1:]:
+            await interaction.followup.send(embeds=embeds, ephemeral=True)
 
     @bot.tree.command(name="사다리안내글", description="(운영진) 이 채널에 설명서와 '방 만들기' 버튼을 올려요")
     @app_commands.default_permissions(manage_guild=True)
@@ -30,9 +33,20 @@ def setup(bot):
         if not ui.is_admin(interaction.user):
             await interaction.response.send_message(T.NO_PERMISSION, ephemeral=True)
             return
-        await interaction.channel.send(embed=ui.guide_embed(),
-                                       view=ui.layout(ui.Btn("start_room", T.GUIDE_START_BUTTON, discord.ButtonStyle.primary)))
-        await interaction.response.send_message("올렸어요. 메시지 오른쪽 ⋯ → **메시지 고정**을 눌러 고정해 두세요.", ephemeral=True)
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        msgs = ui.guide_messages()
+        sent = []
+        for i, embeds in enumerate(msgs):                       # 방 만들기 버튼은 맨 아래(입력창 바로 위)에 오게 마지막 메시지에
+            last = i == len(msgs) - 1
+            sent.append(await interaction.channel.send(
+                embeds=embeds, view=ui.layout(ui.Btn("start_room", T.GUIDE_START_BUTTON, discord.ButtonStyle.primary)) if last else None))
+        try:
+            for m in sent:
+                await m.pin()
+            note = "올리고 고정까지 했어요."
+        except (discord.Forbidden, discord.HTTPException):
+            note = f"올렸어요. 고정은 봇 권한이 없어 못 했어요. 올라간 메시지 {len(sent)}개를 각각 오른쪽 ⋯ → **메시지 고정**으로 고정해 주세요."
+        await interaction.followup.send(note, ephemeral=True)
 
     @bot.tree.command(name="사다리기록", description="(운영진) 학생 한 명의 주제 찾기 사다리 기록 파일 받기")
     @app_commands.describe(student="기록을 볼 학생")

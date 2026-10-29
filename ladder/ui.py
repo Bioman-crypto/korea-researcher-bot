@@ -150,11 +150,22 @@ def _offered(interaction, custom_id):
 
 
 # ---------- 화면 ----------
-def guide_embed():
-    e = discord.Embed(title=T.GUIDE_TITLE, color=COLOR)
-    for name, value in T.GUIDE:
-        e.add_field(name=name, value=_cut(value, 1024), inline=False)
-    return e
+def guide_embeds():
+    nums = {"extract": LIMITS["extract"], "coach": LIMITS["coach"], "signal": LIMITS["signal"]}
+    return [discord.Embed(title=title, description=_cut(body.format(**nums) if "{" in body else body, 4096), color=COLOR)
+            for title, body in T.GUIDE_PAGES]
+
+
+def guide_messages():
+    """설명서를 메시지 단위로 나눈다 (메시지 하나에 임베드 합계 6000자·10개까지)."""
+    out, cur, size = [], [], 0
+    for e in guide_embeds():
+        if cur and (size + len(e) > 5800 or len(cur) == 10):
+            out.append(cur)
+            cur, size = [], 0
+        cur.append(e)
+        size += len(e)
+    return out + [cur] if cur else out
 
 
 def welcome_panel(name):
