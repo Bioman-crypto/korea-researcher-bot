@@ -164,39 +164,63 @@ def keywords_panel():
 
 
 def s1_panel(st):
+    """1단계 결과. 학생이 '무엇을 눌러 무엇을 얻는지' 헷갈리지 않게 할 일을 번호로 적고,
+    메뉴는 연구 키워드 추천 하나만 둔다 (경험 키워드는 이미 다 골라져 있어 고칠 때만 따로 연다)."""
     probs = [w["word"] for w in st["words"] if w.get("kind") != "강점"]
     strengths = [w["word"] for w in st["words"] if w.get("kind") == "강점"]
     lines = []
     if st["echo"]:
         lines += [f"**{T.S1_ECHO}**", *[f"• {T.plain(x)}" for x in st["echo"]], ""]
-    if probs:                                     # 메뉴는 닫혀 있으면 내용이 잘 안 보여서 본문에도 적는다
-        lines.append(f"**{T.S1_WORDS_LIST}** " + " · ".join(probs))
-    if strengths:
-        lines.append(f"**{T.S1_STRENGTH_LIST}** " + " · ".join(strengths))
     if probs or strengths:
-        lines.append(T.S1_MENU_NOTE)
+        lines.append(f"**{T.S1_WORDS_HEAD}**")
+        if probs:
+            lines.append(f"• {T.S1_WORDS_LIST} " + " · ".join(probs))
+        if strengths:
+            lines.append(f"• {T.S1_STRENGTH_LIST} " + " · ".join(strengths))
+        lines += [T.S1_EDIT_NOTE, ""]
     sug = engine.suggest_options(st)
-    if sug:
-        lines += ["", T.S1_SUGGEST_NOTE]
+    todo, n = [], 1
     if st["follow_up"]:
-        lines += ["", (T.FOLLOW_UP_THIN if st["thin"] else T.FOLLOW_UP).format(q=T.plain(st["follow_up"]))]
+        todo.append((T.S1_TODO_FOLLOW_THIN if st["thin"] else T.S1_TODO_FOLLOW).format(n=n, q=T.plain(st["follow_up"])))
+        n += 1
+    if sug:
+        todo.append(T.S1_TODO_SUGGEST.format(n=n))
+        n += 1
+    elif not st["kws"]:
+        todo.append(T.S1_TODO_NO_KWS.format(n=n))
+        n += 1
+    todo.append(T.S1_TODO_NEXT.format(n=n))
+    lines += [f"**{T.S1_TODO_HEAD}**", "\n\n".join(todo), "", T.S1_WHAT_NEXT]
     e = discord.Embed(title=T.S1_TITLE, description=_cut("\n".join(lines), 4096), color=COLOR)
     items = []
-    on = set(engine.chosen_words(st))
-    quote = {w["word"]: w.get("quote") for w in st["words"]}
-    why = lambda w: quote.get(w) and "근거: " + quote[w]
-    for act, pool, ph, row in (("words", probs, T.S1_WORDS_PH, 0), ("strengths", strengths, T.S1_STRENGTH_PH, 1)):
-        opts = _options(pool, on, why)
-        if opts:                                   # 최대 선택 수 = 실제 선택지 수 (넘으면 디스코드가 거부)
-            items.append(Sel(act, opts, ph, 0, len(opts), row=row))
     desc = dict(sug)
     for i, chunk in enumerate((sug[:25], sug[25:50])):
         opts = _options([t for t, _ in chunk], set(st["kws"]), desc.get)
-        if opts:
-            items.append(Sel("suggest" + ("" if i == 0 else "2"), opts, T.S1_SUGGEST_PH, 0, len(opts), row=2 + i))
-    items += [Btn("add_word", T.BTN_ADD_WORD, row=4), Btn("edit_answers", T.BTN_EDIT_ANSWERS, row=4),
-              Btn("edit_keywords", T.BTN_EDIT_KEYWORDS, row=4), Btn("to_s2", T.BTN_TO_S2, discord.ButtonStyle.primary, row=4)]
+        if opts:                                   # 최대 선택 수 = 실제 선택지 수 (넘으면 디스코드가 거부)
+            items.append(Sel("suggest" + ("" if i == 0 else "2"), opts, T.S1_SUGGEST_PH if i == 0 else T.S1_SUGGEST2_PH,
+                             0, len(opts), row=i))
+    if st["follow_up"]:
+        items.append(Btn("follow_up", T.BTN_FOLLOW_UP, discord.ButtonStyle.primary if st["thin"] else discord.ButtonStyle.secondary, row=2))
+    items.append(Btn("to_s2", T.BTN_TO_S2, discord.ButtonStyle.secondary if st["thin"] else discord.ButtonStyle.primary, row=2))
+    items += [Btn("edit_words", T.BTN_EDIT_WORDS, row=3), Btn("edit_answers", T.BTN_EDIT_ANSWERS, row=3),
+              Btn("edit_keywords", T.BTN_EDIT_KEYWORDS, row=3)]
     return {"embed": e, "view": layout(*items)}
+
+
+def words_panel(st):
+    """경험 키워드 고치기 (나만 보이는 메시지)."""
+    probs = [w["word"] for w in st["words"] if w.get("kind") != "강점"]
+    strengths = [w["word"] for w in st["words"] if w.get("kind") == "강점"]
+    on = set(engine.chosen_words(st))
+    quote = {w["word"]: w.get("quote") for w in st["words"]}
+    why = lambda w: quote.get(w) and "근거: " + quote[w]
+    items = []
+    for act, pool, ph, row in (("words", probs, T.S1_WORDS_PH, 0), ("strengths", strengths, T.S1_STRENGTH_PH, 1)):
+        opts = _options(pool, on, why)
+        if opts:
+            items.append(Sel(act, opts, ph, 0, len(opts), row=row))
+    items.append(Btn("add_word", T.BTN_ADD_WORD, row=2))
+    return {"content": T.EDIT_WORDS_MSG, "view": layout(*items)}
 
 
 def s2_panel(st, note=""):
@@ -330,6 +354,17 @@ class AddWordModal(discord.ui.Modal):
 
     async def on_submit(self, interaction):
         await _guard(on_add_word, interaction, self.word.value.strip())
+
+
+class FollowUpModal(discord.ui.Modal):
+    def __init__(self, q):
+        super().__init__(title=T.MODAL_FOLLOW_TITLE, timeout=3600)
+        self.a = discord.ui.TextInput(label=T.FOLLOW_LABEL, placeholder=_cut(q, 100),
+                                      style=discord.TextStyle.paragraph, max_length=500)
+        self.add_item(self.a)
+
+    async def on_submit(self, interaction):
+        await _guard(on_follow_up, interaction, self.a.value.strip())
 
 
 class QuestionModal(discord.ui.Modal):
@@ -480,12 +515,35 @@ async def s_suggest(interaction, values, cid="lad:s:suggest"):
     if not st:
         return
     engine.set_suggested(st, _offered(interaction, cid), values)
-    await interaction.response.defer()
+    msg = T.SUGGEST_SAVED.format(kws=", ".join(st["kws"])) if st["kws"] else T.SUGGEST_EMPTY
+    await interaction.response.send_message(msg, ephemeral=True)       # 고른 게 어디로 갔는지 바로 보여 준다
     await store.save(interaction.user.id, _name(interaction.user), st)
 
 
 async def s_suggest2(interaction, values):
     await s_suggest(interaction, values, "lad:s:suggest2")
+
+
+async def b_follow_up(interaction):
+    st = await room_state(interaction)
+    if st:
+        await interaction.response.send_modal(FollowUpModal(T.plain(st.get("follow_up") or "")))
+
+
+async def on_follow_up(interaction, a):
+    st = await room_state(interaction)
+    if not st or not a:
+        return
+    q = st.get("follow_up") or ""
+    i = engine.follow_target(st["answers"], q)                     # 추가 질문이 가리킨 답 칸 뒤에 덧붙인다
+    st["answers"][i] = "\n".join(x for x in ((st["answers"][i] or "").strip(), T.FOLLOW_TAG.format(q=q, a=a)) if x)
+    await run_extract(interaction, st)
+
+
+async def b_edit_words(interaction):
+    st = await room_state(interaction)
+    if st:
+        await interaction.response.send_message(**words_panel(st), ephemeral=True)
 
 
 async def b_add_word(interaction):
@@ -499,7 +557,7 @@ async def on_add_word(interaction, word):
         return
     if not any(w["word"] == word for w in st["words"]):
         st["words"].append({"word": word, "kind": "문제", "from": 0, "quote": "", "on": True})
-    await interaction.response.send_message(**s2_panel(st, T.SAVED))
+    await interaction.response.send_message(T.WORD_ADDED.format(word=word), ephemeral=True)
     await store.save(interaction.user.id, _name(interaction.user), st)
 
 
@@ -673,6 +731,6 @@ async def b_start_room(interaction):
 BUTTONS = {"interview": b_interview, "edit_answers": b_interview, "keywords": b_keywords, "edit_keywords": b_keywords,
            "no_keywords": b_no_keywords, "add_word": b_add_word, "to_s2": b_to_s2, "write": b_write, "random": b_random,
            "rewrite": b_rewrite, "other_pair": b_other_pair, "signal": b_signal, "record": b_record, "reset": b_reset,
-           "reset_yes": b_reset_yes, "start_room": b_start_room}
+           "reset_yes": b_reset_yes, "start_room": b_start_room, "follow_up": b_follow_up, "edit_words": b_edit_words}
 SELECTS = {"words": s_words, "strengths": s_strengths, "suggest": s_suggest, "suggest2": s_suggest2,
            "pair_word": s_pair_word, "pair_kw": s_pair_kw}

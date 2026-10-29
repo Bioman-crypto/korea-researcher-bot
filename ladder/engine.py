@@ -161,6 +161,18 @@ def from_bg_ratio(q, bg_text):
     return 0 if len(t) < 8 or not b else _grams_ratio(t, b)
 
 
+def follow_target(answers, q):
+    """AI 추가 질문이 가리키는 인터뷰 칸: 질문과 2글자 조각이 가장 많이 겹치는 답. 겹치는 게 없으면 가장 짧은 답 칸."""
+    t = re.sub(r"\s+", "", q or "")
+    grams = {t[i:i + 2] for i in range(len(t) - 1)}
+    def score(a):
+        a = re.sub(r"\s+", "", a or "")
+        return sum(a[i:i + 2] in grams for i in range(len(a) - 1))
+    filled = [i for i, a in enumerate(answers) if (a or "").strip()] or list(range(len(answers)))
+    best = max(filled, key=lambda i: score(answers[i]))
+    return best if score(answers[best]) else min(filled, key=lambda i: len(answers[i] or ""))
+
+
 def apply_coach(state, word, kw, q, judged, bg):
     """판정 결과를 기록에 넣고 피드백 화면에 쓸 값을 돌려준다. bg는 실패하면 None."""
     j = judged[0] if isinstance(judged, list) and judged else judged

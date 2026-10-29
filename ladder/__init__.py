@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 def setup(bot):
     bot.add_dynamic_items(ui.Btn, ui.Sel)
 
-    @bot.tree.command(name="주제찾기사다리", description="내 주제 찾기 사다리 방을 열어요 (1강 1-3 뒤에 쓰면 좋아요)")
+    @bot.tree.command(name="주제찾기사다리", description="내 주제 찾기 사다리 방을 열어요 (1강까지 들었다면 쓸 수 있어요)")
     async def open_cmd(interaction: discord.Interaction):
         await ui._guard(ui.open_room, interaction)
 
