@@ -256,9 +256,13 @@ def s2_panel(st, note=""):
 
 def feedback_panel(h):
     lv = h["level"]
-    ladder = " · ".join(f"**[{T.LEVELS[i]}]**" if i == lv else T.LEVELS[i] for i in range(1, 7))
-    e = discord.Embed(title=T.FB_TITLE.format(level=T.LEVELS.get(lv, lv)),
-                      description=_cut(f"> {h['q']}\n\n{ladder}\n_{T.LEVEL_MEANING.get(lv, '')}_", 4096), color=COLOR)
+    n = lv if lv in T.LEVELS else 0
+    bar = "🟩" * n + "⬜" * (6 - n)                              # 6칸 중 몇 칸인지 한눈에 (단계라는 게 보이게)
+    num = "①②③④⑤⑥"
+    steps = " → ".join(f"**{num[i - 1]} {T.LEVELS[i]}**" if i == n else f"{num[i - 1]} {T.LEVELS[i]}" for i in range(1, 7))
+    meaning = f"\n➡️ **{n}단계 {T.LEVELS[n]}** = {T.LEVEL_MEANING.get(n, '')}" if n else ""
+    e = discord.Embed(title=T.FB_TITLE.format(n=n or "?", level=T.LEVELS.get(n, "")),
+                      description=_cut(f"> {h['q']}\n\n{bar}\n{steps}{meaning}\n{T.FB_LADDER_NOTE}", 4096), color=COLOR)
     if h["reason"]:
         e.add_field(name=T.FB_REASON, value=_cut(T.plain(h["reason"]), 1024), inline=False)
     if h.get("bg"):
@@ -267,9 +271,12 @@ def feedback_panel(h):
         e.add_field(name=T.FB_HINT, value=_cut(T.plain(h["hint"]), 1024), inline=False)
     if h["next"]:
         e.add_field(name=T.FB_NEXT, value=_cut(T.plain(h["next"]), 1024), inline=False)
-    check = [T.FB_BOTH_OK if h["uses_both"] else T.FB_BOTH_NO, T.FB_LINK_OK if h["my_link"] else T.FB_LINK_NO]
+    check = [T.FB_BOTH_OK if h["uses_both"] else T.FB_BOTH_NO.format(word=h["word"], kw=h["kw"]),
+             T.FB_LINK_OK if h["my_link"] else T.FB_LINK_NO]
     if h.get("fact_note"):
         check.append(T.FB_FACT.format(note=T.plain(h["fact_note"])))
+    if not (h["uses_both"] and h["my_link"]):
+        check.append(T.FB_CHECK_TAIL)
     e.add_field(name=T.FB_CHECK, value=_cut("\n".join(check), 1024), inline=False)
     e.set_footer(text=_cut(f"{h['word']} × {h['kw']}", 2048))
     warn = T.FB_COPIED_HINT if h.get("copied", 0) >= 40 else T.FB_COPIED_BG if h.get("bgCopied", 0) >= 40 else None
