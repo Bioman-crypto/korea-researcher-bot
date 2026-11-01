@@ -60,14 +60,19 @@ def build_embeds(
                 name = author["name"][:40]
                 institution = author["institution"][:60]
                 count = author.get("paper_count", 1)
-                lines.append(f"{num}. **{name}** — {institution} ({count}편)")
+                mark = " 🔎" if author.get("needs_check") else ""
+                lines.append(f"{num}. **{name}** — {institution} ({count}편){mark}")
             embed.add_field(name="​", value="\n".join(lines), inline=False)
 
         start = idx * config.EMBED_PAGE_SIZE + 1
         end = start + len(chunk) - 1
         cache_note = "⚡ Cached result (24h)  |  " if from_cache else ""
+        check_note = (
+            "\n🔎 = 이번 검색 논문 중 1저자와 같은 소속인 논문 없음. 정확한 추가 확인 필요"
+            if any(a.get("needs_check") for a in chunk) else ""
+        )
         embed.set_footer(
-            text=f"{cache_note}{total_found} authors found  |  Showing {start}–{end} of {total_shown}"
+            text=f"{cache_note}{total_found} authors found  |  Showing {start}–{end} of {total_shown}{check_note}"
         )
 
         embeds.append(embed)

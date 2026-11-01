@@ -188,6 +188,26 @@ async def fetch_works(
     return works
 
 
+def _differs_from_first_author(auth: dict, first: dict) -> bool:
+    """
+    교신저자와 1저자의 소속이 '확실히' 다른지.
+    본인이 1저자이거나 소속 정보가 비어 있으면 False (판단 불가는 다름으로 세지 않음).
+    상하위 기관(lineage) 관계면 같은 소속으로 본다. 예: 서울대 ↔ 서울대병원.
+    """
+    if auth is first:
+        return False
+    corr_insts = auth.get("institutions") or []
+    first_insts = first.get("institutions") or []
+    if not corr_insts or not first_insts:
+        return False
+    for c in corr_insts:
+        for f in first_insts:
+            if c.get("id") and (c["id"] in (f.get("lineage") or [f.get("id")])
+                                or f.get("id") in (c.get("lineage") or [c["id"]])):
+                return False
+    return True
+
+
 def extract_authors(
     works: list[dict],
     univ: Optional[str],
@@ -198,9 +218,11 @@ def extract_authors(
     Deduplication key: OpenAlex author ID.
     Uses authors flagged is_corresponding (may be several per work).
     Fallback: last author when is_corresponding is missing on all authorships.
-    Returns list of {"name", "institution", "year", "paper_count"} sorted by paper count.
+    needs_check: True when, in every one of the author's works, the first author's
+    affiliation is confirmed to differ from theirs.
+    Returns list of {"name", "institution", "year", "paper_count", "needs_check"} sorted by paper count.
     """
-    # author_id → {"name", "institution", "year", "paper_count"}
+    # author_id → {"name", "institution", "year", "paper_count", "diff_first_affil"}
     seen: dict[str, dict] = {}
 
     for work in works:
@@ -228,17 +250,24 @@ def extract_authors(
             institution: str = korean_insts[0].get("display_name") or "Affiliation unknown"
 
             key = author_id if author_id else f"__{name}__{institution}"
+            differs = int(_differs_from_first_author(auth, authorships[0]))
 
             existing = seen.get(key)
             if existing is None:
-                seen[key] = {"name": name, "institution": institution, "year": year, "paper_count": 1}
+                seen[key] = {
+                    "name": name, "institution": institution, "year": year,
+                    "paper_count": 1, "diff_first_affil": differs,
+                }
             else:
                 existing["paper_count"] += 1
+                existing["diff_first_affil"] += differs
                 if year > existing["year"]:
                     existing["institution"] = institution
                     existing["year"] = year
 
     authors = list(seen.values())
+    for a in authors:
+        a["needs_check"] = a.pop("diff_first_affil") == a["paper_count"]
 
     if univ:
         authors = [
