@@ -196,10 +196,11 @@ def extract_authors(
     Extract and deduplicate corresponding authors from works.
 
     Deduplication key: OpenAlex author ID.
+    Uses authors flagged is_corresponding (may be several per work).
     Fallback: last author when is_corresponding is missing on all authorships.
-    Returns list of {"name", "institution", "year"} sorted by name.
+    Returns list of {"name", "institution", "year", "paper_count"} sorted by paper count.
     """
-    # author_id → {"name", "institution", "year"}
+    # author_id → {"name", "institution", "year", "paper_count"}
     seen: dict[str, dict] = {}
 
     for work in works:
@@ -209,30 +210,33 @@ def extract_authors(
         if not authorships:
             continue
 
-        # Always use last author (Korean convention: last author = PI/corresponding)
-        auth = authorships[-1]
-        author = auth.get("author") or {}
-        author_id: str = author.get("id") or ""
-        name: str = author.get("display_name") or "Anonymous"
-        institutions: list[dict] = auth.get("institutions") or []
+        corresponding = [a for a in authorships if a.get("is_corresponding")]
+        # 교신저자 표시가 없을 때만 마지막 저자(한국 관행상 PI)로 대체
+        candidates = corresponding or [authorships[-1]]
 
-        # Keep only Korean-affiliated last authors
-        korean_insts = [i for i in institutions if i.get("country_code") == "KR"]
-        if not korean_insts:
-            continue
+        for auth in candidates:
+            author = auth.get("author") or {}
+            author_id: str = author.get("id") or ""
+            name: str = author.get("display_name") or "Anonymous"
+            institutions: list[dict] = auth.get("institutions") or []
 
-        institution: str = korean_insts[0].get("display_name") or "Affiliation unknown"
+            # Keep only Korean-affiliated corresponding authors
+            korean_insts = [i for i in institutions if i.get("country_code") == "KR"]
+            if not korean_insts:
+                continue
 
-        key = author_id if author_id else f"__{name}__{institution}"
+            institution: str = korean_insts[0].get("display_name") or "Affiliation unknown"
 
-        existing = seen.get(key)
-        if existing is None:
-            seen[key] = {"name": name, "institution": institution, "year": year, "paper_count": 1}
-        else:
-            existing["paper_count"] += 1
-            if year > existing["year"]:
-                existing["institution"] = institution
-                existing["year"] = year
+            key = author_id if author_id else f"__{name}__{institution}"
+
+            existing = seen.get(key)
+            if existing is None:
+                seen[key] = {"name": name, "institution": institution, "year": year, "paper_count": 1}
+            else:
+                existing["paper_count"] += 1
+                if year > existing["year"]:
+                    existing["institution"] = institution
+                    existing["year"] = year
 
     authors = list(seen.values())
 
