@@ -49,16 +49,20 @@ def _api():
 # deep 프롬프트는 모두 JSON 객체를 돌려준다. 글로 쓰게 하면 문장 속 큰따옴표로 JSON이 깨지므로
 # (운영 로그 'Expecting , delimiter') 도구 입력으로 받는다 — API가 JSON으로 만들어 준다.
 # judge는 배열을 돌려주고 검증한 형식이라 그대로 둔다.
+# Opus 5.5는 tool_choice 'tool'(강제)을 400으로 거절한다 → 'auto' + 지시. 도구를 안 쓰면 글에서 읽는다.
 ANSWER_TOOL = {"name": "answer", "description": "지시한 [출력] 형식의 JSON 객체를 그대로 넣는다.",
                "input_schema": {"type": "object", "additionalProperties": True}}
+ANSWER_RULE = " 답은 반드시 answer 도구를 한 번 호출해 그 입력으로 낸다. 글로 따로 쓰지 않는다."
 
 
 async def _call_api(tier, prompt, system):
-    extra = {"tools": [ANSWER_TOOL], "tool_choice": {"type": "tool", "name": "answer"}} if tier == "deep" else {}
-    r = await _api().messages.create(model=MODELS[tier], max_tokens=MAX_TOKENS, system=system,
+    deep = tier == "deep"
+    extra = {"tools": [ANSWER_TOOL], "tool_choice": {"type": "auto"}} if deep else {}
+    r = await _api().messages.create(model=MODELS[tier], max_tokens=MAX_TOKENS, system=system + (ANSWER_RULE if deep else ""),
                                      messages=[{"role": "user", "content": prompt}], **extra)
-    if extra:
-        text = next((json.dumps(b.input, ensure_ascii=False) for b in r.content if getattr(b, "type", "") == "tool_use"), "")
+    tool = next((b.input for b in r.content if getattr(b, "type", "") == "tool_use"), None) if deep else None
+    if tool is not None:
+        text = json.dumps(tool, ensure_ascii=False)
     else:
         text = "".join(b.text for b in r.content if getattr(b, "type", "") == "text")
     return text, {"model": r.model, "in": r.usage.input_tokens, "out": r.usage.output_tokens}
