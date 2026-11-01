@@ -46,10 +46,21 @@ def _api():
     return _client
 
 
+# deep 프롬프트는 모두 JSON 객체를 돌려준다. 글로 쓰게 하면 문장 속 큰따옴표로 JSON이 깨지므로
+# (운영 로그 'Expecting , delimiter') 도구 입력으로 받는다 — API가 JSON으로 만들어 준다.
+# judge는 배열을 돌려주고 검증한 형식이라 그대로 둔다.
+ANSWER_TOOL = {"name": "answer", "description": "지시한 [출력] 형식의 JSON 객체를 그대로 넣는다.",
+               "input_schema": {"type": "object", "additionalProperties": True}}
+
+
 async def _call_api(tier, prompt, system):
+    extra = {"tools": [ANSWER_TOOL], "tool_choice": {"type": "tool", "name": "answer"}} if tier == "deep" else {}
     r = await _api().messages.create(model=MODELS[tier], max_tokens=MAX_TOKENS, system=system,
-                                     messages=[{"role": "user", "content": prompt}])
-    text = "".join(b.text for b in r.content if getattr(b, "type", "") == "text")
+                                     messages=[{"role": "user", "content": prompt}], **extra)
+    if extra:
+        text = next((json.dumps(b.input, ensure_ascii=False) for b in r.content if getattr(b, "type", "") == "tool_use"), "")
+    else:
+        text = "".join(b.text for b in r.content if getattr(b, "type", "") == "text")
     return text, {"model": r.model, "in": r.usage.input_tokens, "out": r.usage.output_tokens}
 
 
