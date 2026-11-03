@@ -53,6 +53,9 @@
   - 키 9개를 순서대로 사용: `OPENALEX_API_KEY`, `_SECONDARY`, `_TERTIARY`, `_QUATERNARY`, `_QUINARY`, `_SENARY`, `_SEPTENARY`, `_OCTONARY`, `_NONARY` (또는 쉼표 구분 `OPENALEX_API_KEYS`). 한 키의 한도가 소진되면 리셋 전까지 건너뛰고 다음 키로 전환 → 전부 소진 시 익명 → 익명도 소진 시 "09:00 이후 재시도" 안내. 리셋까지 기다렸다 DM으로 보내는 방식은 운영자 결정으로 **채택하지 않음**.
   - 서버 부하 429(Retry-After ≤ 120초)는 한도 소진이 아니므로 같은 키로 Retry-After만큼 기다렸다 재시도. 네트워크/5xx만 `MAX_NETWORK_RETRY`회 제한. 전체 기한 `SEARCH_DEADLINE_SECONDS`=13분(디스코드 응답 토큰 15분).
   - ⚠️ 여러 키 순환은 OpenAlex 정책상 키 차단 위험이 있음을 알고 운영자가 선택함. 키가 일괄 차단되면 이 부분부터 의심할 것.
+  - **9번째 키(`_NONARY`)는 연구 동향 분석기 월간 실행(수집·인용 갱신, 매월 말일 약 2,600크레딧)이 고정으로 쓴다(2026-11-03).** 전에는 분석기가
+    첫 번째 키를 써서 봇과 하루 한도를 나눠 썼다. 봇은 1~8번째가 다 소진돼야 9번째로 가므로 평소엔 겹치지 않는다. 키 순서를 바꾸거나
+    9번째 키를 앞으로 당기면 다시 겹친다.
 - **배포 (Railway)**: GitHub `Bioman-crypto/korea-researcher-bot` main 푸시 → 자동 재배포. Railway 서비스 이름은 **`worker`** (Settings → Source Repo로 확인. 같은 계정의 `daepcon-chatbot`은 다른 봇이니 건드리지 말 것). **Variables를 바꾼 뒤에는 좌측 상단 보라색 `Deploy` 버튼을 눌러야 적용됨** — "N changes" 표시가 남아 있으면 아직 미적용.
 - 검색 결과(교신저자 목록)는 디스코드에만 표시. CSV 저장/전송 기능 없음 (개인정보 보호).
 - 캐시는 인메모리(24h TTL). 서버 재시작 시 초기화됨.
