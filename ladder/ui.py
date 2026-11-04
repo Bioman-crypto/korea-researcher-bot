@@ -15,9 +15,9 @@ from . import engine, llm, store, texts as T
 
 logger = logging.getLogger(__name__)
 
-LIMITS = {"extract": int(os.getenv("LADDER_LIMIT_EXTRACT", "3")),
-          "coach": int(os.getenv("LADDER_LIMIT_COACH", "10")),
-          "signal": int(os.getenv("LADDER_LIMIT_SIGNAL", "3"))}
+LIMITS = {"extract": int(os.getenv("LADDER_LIMIT_EXTRACT", "2")),
+          "coach": int(os.getenv("LADDER_LIMIT_COACH", "6")),
+          "signal": int(os.getenv("LADDER_LIMIT_SIGNAL", "2"))}
 COLOR = discord.Color.from_rgb(88, 101, 242)
 _locks: dict = {}
 
@@ -125,6 +125,11 @@ async def _guard(handler, interaction, *args):
 def _error_keep(text):
     """AI 호출 실패 안내. 학생이 쓴 글이 있으면 다시 붙여 넣을 수 있게 같이 보여 준다 (실패한 건 한도에서 빠짐)."""
     return _cut(T.ERROR + (f"\n{T.ERROR_KEEP}\n{text}" if text else ""), 2000)
+
+
+def _limit_msg(kind, text=""):
+    """하루 한도 안내. 방금 쓴 글이 있으면 내일 다시 붙여 넣을 수 있게 같이 보여 준다."""
+    return _cut(T.DAILY_LIMIT[kind].format(n=LIMITS[kind]) + (f"\n{T.LIMIT_KEEP}\n{text}" if text else ""), 2000)
 
 
 def _options(values, selected=(), desc=None):
@@ -270,8 +275,8 @@ def s2_panel(st, note=""):
     return {"embed": e, "view": layout(*items)}
 
 
-def feedback_panel(h, done=None):
-    """done = 지금까지 피드백 받은 질문 수 (관심 분야 찾기까지 얼마나 남았는지 아래에 적는다)."""
+def feedback_panel(h, done=None, left=None):
+    """done = 지금까지 피드백 받은 질문 수 (관심 분야 찾기까지 얼마나 남았는지 아래에 적는다), left = 오늘 남은 피드백 횟수."""
     lv = h["level"]
     n = lv if lv in T.LEVELS else 0
     bar = "🟩" * n + "⬜" * (6 - n)                              # 6칸 중 몇 칸인지 한눈에 (단계라는 게 보이게)
@@ -296,6 +301,7 @@ def feedback_panel(h, done=None):
         check.append(T.FB_CHECK_TAIL)
     e.add_field(name=T.FB_CHECK, value=_cut("\n".join(check), 1024), inline=False)
     progress = "" if done is None else "\n" + (T.FB_PROGRESS_OK if done >= 3 else T.FB_PROGRESS_LOW).format(n=done)
+    progress += "" if left is None else "\n" + T.FB_LEFT.format(left=left)
     e.set_footer(text=_cut(f"{h['word']} × {h['kw']}{progress}", 2048))
     warn = T.FB_COPIED_HINT if h.get("copied", 0) >= 40 else T.FB_COPIED_BG if h.get("bgCopied", 0) >= 40 else None
     view = layout(Btn("rewrite", T.BTN_REWRITE, discord.ButtonStyle.primary), Btn("other_pair", T.BTN_OTHER_PAIR),
@@ -323,7 +329,7 @@ def signal_embeds(s):
         d.add_field(name=T.S3_KEYWORDS, value=_cut(", ".join(map(str, s["keywords"])), 1024), inline=False)
     if s.get("next_step"):
         d.add_field(name=T.S3_NEXT, value=_cut(T.plain(s["next_step"]), 1024), inline=False)
-    d.set_footer(text=T.S3_AGAIN)
+    d.set_footer(text=T.S3_AGAIN.format(n=LIMITS["signal"]))
     out.append(d)
     return out
 
@@ -508,7 +514,7 @@ async def run_extract(interaction, st, keep=""):
         return False
     async with lock:
         if not engine.bump_usage(st, "extract", LIMITS["extract"]):
-            await ephemeral(interaction, T.DAILY_LIMIT)
+            await ephemeral(interaction, _limit_msg("extract", keep))
             return False
         await interaction.response.defer(thinking=True)
         try:
@@ -667,7 +673,7 @@ async def on_question(interaction, word, kw, q):
         return
     async with lock:
         if not engine.bump_usage(st, "coach", LIMITS["coach"]):
-            await ephemeral(interaction, T.DAILY_LIMIT)
+            await ephemeral(interaction, _limit_msg("coach", q))
             return
         await interaction.response.defer(thinking=True)
         # 판정(검증한 프롬프트)과 배경지식(별도 프롬프트)을 동시에. 배경이 실패해도 판정은 보여 준다.
@@ -681,7 +687,8 @@ async def on_question(interaction, word, kw, q):
             return
         (judged, jmeta), (bg, bmeta) = jr, (br if not isinstance(br, Exception) else (None, {}))
         h, same = engine.apply_coach(st, word, kw, q, judged, bg)
-        msg = await interaction.followup.send(**feedback_panel(h, len(engine.signal_hist(st))), wait=True)
+        left = LIMITS["coach"] - st["usage"].get("coach", 0)
+        msg = await interaction.followup.send(**feedback_panel(h, len(engine.signal_hist(st)), left), wait=True)
         engine.remember_feedback(st, msg.id, h)
         await store.save(uid, name, st)
         store.log(uid, name, "coach", word=word, kw=kw, q=q, h=h, same=same, judge=jmeta, deep=bmeta,
@@ -711,7 +718,7 @@ async def b_signal(interaction):
         return
     async with lock:
         if not engine.bump_usage(st, "signal", LIMITS["signal"]):
-            await ephemeral(interaction, T.DAILY_LIMIT)
+            await ephemeral(interaction, _limit_msg("signal"))
             return
         await interaction.response.defer(thinking=True)
         try:
@@ -751,13 +758,18 @@ async def b_reset_yes(interaction):
     if not st:
         return
     uid, name = interaction.user.id, _name(interaction.user)
-    fresh = engine.new_state(st["thread_id"])
-    fresh["usage"] = st.get("usage", {})                          # 하루 한도는 다시 시작해도 이어서 센다
-    store.put(uid, fresh)
-    await interaction.response.edit_message(content=T.RESET_DONE, view=None)
-    store.log(uid, name, "reset", detail={"before": st})          # 지운 기록도 운영진 시트에는 남긴다
-    await interaction.channel.send(**welcome_panel(name))
-    await store.save(uid, name, fresh)
+    lock = _lock(uid)
+    if lock.locked():                    # AI 답을 기다리는 중에 지우면, 답이 온 뒤 옛 상태가 다시 저장돼 지운 게 되살아난다
+        await ephemeral(interaction, T.RESET_BUSY)
+        return
+    async with lock:
+        fresh = engine.new_state(st["thread_id"])
+        fresh["usage"] = st.get("usage", {})                      # 하루 한도는 다시 시작해도 이어서 센다
+        store.put(uid, fresh)
+        await interaction.response.edit_message(content=T.RESET_DONE, view=None)
+        store.log(uid, name, "reset", detail={"before": st})      # 지운 기록도 운영진 시트에는 남긴다
+        await interaction.channel.send(**welcome_panel(name))
+        await store.save(uid, name, fresh)
 
 
 async def b_start_room(interaction):
